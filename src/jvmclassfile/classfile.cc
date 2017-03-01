@@ -9,7 +9,7 @@
 #include "classloader.h"
 #include "EBadClassFile.h"
 
-using namespace std;
+#include <algorithm>
 
 
 ClassFile::~ClassFile() {
@@ -23,8 +23,8 @@ ClassFile::ClassFile(const char* name) {
 	initialized = false;
 
 	// We must look for a classfile with that name
-	string s = name + string(".class");
-	ifstream f(s.c_str(), ios::binary);
+	std::string s = name + string(".class");
+	std::ifstream f(s, ios::binary);
 
 	int32_t tmp1;
 	int16_t tmp2;
@@ -37,11 +37,9 @@ ClassFile::ClassFile(const char* name) {
 	Load(&tmp2, f);
 
 	Load(&constant_pool_count, f);
-	//cout << "veamos : " << constant_pool_count << endl;
 	for (int i = 0; i < constant_pool_count - 1; ++i) {
 		Load(&tmp3, f);
-		shared_ptr<Constant_Info> ci;
-		//cout <<  "Indice "  << i+1 << " valor " << (int)tmp3 << endl;
+		std::shared_ptr<Constant_Info> ci;
 		switch (tmp3) {
 			case CONSTANT_Class:
 				ci = std::make_shared<CONSTANT_Class_info>(f);
@@ -88,9 +86,9 @@ ClassFile::ClassFile(const char* name) {
 				ci = std::make_shared<Constant_Info_UTF8>(f);
 				break;
 			default:
-				cerr << "Uppps: Incorrect tag found while loading constant pool" << endl;
-				cerr << "Value : " << (int) tmp3 << endl;
-				cerr << "Constant pool entries processed : " << i << endl;
+				std::cerr << "Uppps: Incorrect tag found while loading constant pool" << endl;
+				std::cerr << "Value : " << (int) tmp3 << endl;
+				std::cerr << "Constant pool entries processed : " << i << endl;
 				throw EBadClassFile();
 				break;
 		}
@@ -116,21 +114,15 @@ ClassFile::ClassFile(const char* name) {
 		interfaces.push_back(tmp);
 	}
 
-	//cout << "interfaces : " << interfaces_count << endl;
-
 	Load(&fields_count, f);
 	for (int i = 0; i < fields_count; ++i) {
 		fields.emplace_back(f, this);
 	}
 
-	//cout << "fields : " << fields_count << endl;
-
 	Load(&methods_count, f);
 	for (int i = 0; i < methods_count; ++i) {
 		methods.emplace_back(f, this);
 	}
-
-	//cout << "methods : " << methods_count << endl;
 
 	Load(&attributes_count, f);
 	attributes_count = 0;
@@ -138,15 +130,28 @@ ClassFile::ClassFile(const char* name) {
 }
 
 int16_t ClassFile::getUTFIndex(const char* code) {
-	for (unsigned i = 0; i < info.size(); i++) {
-		Constant_Info* ci = info[i].get();
+	auto pos = std::find_if(std::cbegin(info), std::cend(info), [&](const auto& e){
+		Constant_Info* ci = e.get();
 		if (ci->tag() == CONSTANT_Utf8) {
 			Constant_Info_UTF8* ciUTF = (Constant_Info_UTF8*) ci;
 			if (ciUTF->Equals(code))
-				return i + 1;
+				return true;
 		}
-	}
-	return -1;
+		return false;
+	});
+	if (pos == std::cend(info))
+		return -1;
+
+	return std::distance(std::cbegin(info), pos) + 1;
+	// for (unsigned i = 0; i < info.size(); i++) {
+	// 	Constant_Info* ci = info[i].get();
+	// 	if (ci->tag() == CONSTANT_Utf8) {
+	// 		Constant_Info_UTF8* ciUTF = (Constant_Info_UTF8*) ci;
+	// 		if (ciUTF->Equals(code))
+	// 			return i + 1;
+	// 	}
+	// }
+	// return -1;
 }
 
 int16_t ClassFile::getCompatibleMethodIndex(const std::string& methodName, const std::string& description) {
@@ -156,21 +161,21 @@ int16_t ClassFile::getCompatibleMethodIndex(const std::string& methodName, const
 		int16_t descI = methods[i].descriptor_index - 1;
 		auto name = static_cast<Constant_Info_UTF8*>(info[nameI].get());
 		if (name && name->Equals(methodName.c_str())) {
-			string s = static_cast<Constant_Info_UTF8*>(info[descI].get())->Value();
+			std::string s = static_cast<Constant_Info_UTF8*>(info[descI].get())->Value();
 			if (s == description)
 				return i;
 		}
 		i++;
 	}
 	// We can not find an exact match, maybe there is some compatible method
-	string d = description;
+	std::string d = description;
 	d = d.substr(1, d.find(')') - 1);
 	i = 0;
 	while (i < methods_count) {
 		int16_t nameI = methods[i].name_index - 1;
 		int16_t descI = methods[i].descriptor_index - 1;
 		if (((Constant_Info_UTF8*) this->info[nameI].get())->Equals(methodName.c_str())) {
-			string s = ((Constant_Info_UTF8*) this->info[descI].get())->Value();
+			std::string s = ((Constant_Info_UTF8*) this->info[descI].get())->Value();
 			s = s.substr(1, s.find(')') - 1);
 			//cout << s << " " << d << endl;
 			bool b = ClassLoader::Instance()->AreCompatibleMethods(s, d);
@@ -190,7 +195,7 @@ std::string ClassFile::getClassName() const {
 			return ci2->Value();
 		}
 	}
-	throw runtime_error("Wrong index into constants for class name: " + std::to_string(this_class));
+	throw std::runtime_error("Wrong index into constants for class name: " + std::to_string(this_class));
 }
 
 std::string ClassFile::getUTF(int16_t index) const{
